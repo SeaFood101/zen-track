@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, Suspense } from "react";
+import { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import WebGazerScript from "@/components/WebGazerScript";
 import { useWebGazer } from "@/lib/useWebGazer";
@@ -18,7 +18,7 @@ function CalibrationContent() {
   const searchParams = useSearchParams();
   const duration = searchParams.get("duration") || "120";
 
-  const { initialize, recordCalibrationPoint, pause } = useWebGazer();
+  const { initialize, recordCalibrationPoint, setGazeListener, clearGazeListener, pause } = useWebGazer();
 
   const [phase, setPhase] = useState<"permission" | "calibrating" | "ready">(
     "permission"
@@ -28,11 +28,22 @@ function CalibrationContent() {
   const [currentPoint, setCurrentPoint] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // Gaze cursor ref
+  const gazeCursorRef = useRef<HTMLDivElement>(null);
+
   const handleStartCalibration = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       await initialize();
+      // Start gaze listener for the yellow cursor
+      setGazeListener((data) => {
+        if (data && gazeCursorRef.current) {
+          gazeCursorRef.current.style.left = `${data.x}px`;
+          gazeCursorRef.current.style.top = `${data.y}px`;
+          gazeCursorRef.current.style.opacity = "1";
+        }
+      });
       setPhase("calibrating");
     } catch {
       setError(
@@ -41,7 +52,7 @@ function CalibrationContent() {
     } finally {
       setLoading(false);
     }
-  }, [initialize]);
+  }, [initialize, setGazeListener]);
 
   const handleDotTap = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
@@ -68,9 +79,12 @@ function CalibrationContent() {
     router.push(`/game?duration=${duration}`);
   }, [router, duration]);
 
+  // Clean up gaze listener on unmount
   useEffect(() => {
-    return () => {};
-  }, []);
+    return () => {
+      clearGazeListener();
+    };
+  }, [clearGazeListener]);
 
   return (
     <div className="animate-fade-in flex min-h-dvh flex-col items-center justify-center px-6">
@@ -134,6 +148,15 @@ function CalibrationContent() {
             ← Back
           </button>
         </div>
+      )}
+
+      {/* Gaze cursor — visible during calibration & ready phases */}
+      {(phase === "calibrating" || phase === "ready") && (
+        <div
+          ref={gazeCursorRef}
+          className="pointer-events-none fixed z-50 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-yellow-400/80 bg-yellow-400/25 opacity-0 transition-opacity duration-300"
+          style={{ willChange: "left, top" }}
+        />
       )}
 
       {phase === "calibrating" && (
