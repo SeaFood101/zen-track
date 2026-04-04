@@ -54,18 +54,27 @@ function CalibrationContent() {
   const streamRef = useRef<MediaStream | null>(null);
   const detectionCount = useRef(0);
 
-  // Start camera preview stream
+  // Start camera preview stream (stores in ref, video element picks it up via callback ref)
   const startPreview = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } },
       });
       streamRef.current = stream;
+      // If video element already mounted, connect immediately
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
     } catch {
       // Preview is best-effort — WebGazer has its own stream
+    }
+  }, []);
+
+  // Callback ref for video elements — connects stream when element mounts
+  const setVideoRef = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    if (el && streamRef.current) {
+      el.srcObject = streamRef.current;
     }
   }, []);
 
@@ -235,7 +244,7 @@ function CalibrationContent() {
           {/* Camera preview */}
           <div className="relative mx-auto h-56 w-56 overflow-hidden rounded-3xl border-2 border-white/10 bg-black/40">
             <video
-              ref={videoRef}
+              ref={setVideoRef}
               autoPlay
               playsInline
               muted
@@ -298,12 +307,7 @@ function CalibrationContent() {
           {/* Small camera thumbnail */}
           <div className="absolute right-4 top-4 z-30 h-20 w-28 overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-lg">
             <video
-              ref={(el) => {
-                // Reuse the same stream for the thumbnail
-                if (el && streamRef.current) {
-                  el.srcObject = streamRef.current;
-                }
-              }}
+              ref={setVideoRef}
               autoPlay
               playsInline
               muted
