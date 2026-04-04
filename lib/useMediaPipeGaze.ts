@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 
-// ── Iris & eye landmark indices ──
+// ── Iris & eye landmark indices (same 478-point model) ──
 const L_IRIS = 468;
 const R_IRIS = 473;
 const L_EYE_INNER = 133;
@@ -15,9 +15,10 @@ const R_EYE_TOP = 386;
 const R_EYE_BOTTOM = 374;
 
 // ── Module-level state (persists across client-side navigations) ──
-let faceMesh: InstanceType<
-  typeof import("@mediapipe/face_mesh").FaceMesh
-> | null = null;
+type Landmarker = Awaited<
+  ReturnType<typeof import("@mediapipe/tasks-vision").FaceLandmarker.createFromOptions>
+>;
+let faceLandmarker: Landmarker | null = null;
 let video: HTMLVideoElement | null = null;
 let stream: MediaStream | null = null;
 let initialized = false;
@@ -104,18 +105,56 @@ function computeMapping() {
 }
 
 function startLoop() {
-  const loop = async () => {
-    if (!running || !video || !faceMesh) return;
+  let lastTime = -1;
+  const loop = () => {
+    if (!running || !video || !faceLandmarker) return;
+
+    const now = performance.now();
+    // FaceLandmarker needs monotonically increasing timestamps
+    if (now <= lastTime) {
+      rafId = requestAnimationFrame(loop);
+      return;
+    }
+    lastTime = now;
+
     try {
-      await faceMesh.send({ image: video });
+      const result = faceLandmarker.detectForVideo(video, now);
+      const faces = result.faceLandmarks;
+
+      if (faces && faces.length > 0 && faces[0].length > R_IRIS + 4) {
+        const { h, v } = computeIrisRatios(
+          faces[0] as { x: number; y: number; z: number }[]
+        );
+        curH = h;
+        curV = v;
+
+        if (listener) {
+          if (mapCoeffs) {
+            const x = mapCoeffs.ax * h + mapCoeffs.bx;
+            const y = mapCoeffs.ay * v + mapCoeffs.by;
+            listener({ x, y }, now);
+          } else {
+            // Face detected but no mapping yet — signal face presence
+            listener(
+              { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+              now
+            );
+          }
+        }
+      } else {
+        if (listener) {
+          listener(null, now);
+        }
+      }
     } catch {
       // skip frame
     }
+
     if (running) {
       rafId = requestAnimationFrame(loop);
     }
   };
-  loop();
+  rafId = requestAnimationFrame(loop);
 }
 
 // ── Hook ──
@@ -130,9 +169,8 @@ export function useMediaPipeGaze() {
     });
     stream = s;
 
-    // Hidden video element for FaceMesh processing
-    // Must stay in viewport with real dimensions — mobile browsers
-    // throttle or skip frames for off-screen / 1×1 elements.
+    // Hidden video element — must be in viewport with real dimensions
+    // for mobile browsers to produce usable frames.
     const v = document.createElement("video");
     v.srcObject = s;
     v.setAttribute("playsinline", "true");
@@ -148,7 +186,7 @@ export function useMediaPipeGaze() {
     v.style.zIndex = "-9999";
     document.body.appendChild(v);
 
-    // Wait for video to have actual frame data before proceeding
+    // Wait for video to have actual frame data
     await new Promise<void>((resolve) => {
       const onReady = () => {
         v.removeEventListener("loadeddata", onReady);
@@ -163,48 +201,26 @@ export function useMediaPipeGaze() {
     });
     video = v;
 
-    // Load FaceMesh — use CDN to avoid MIME-type / static-file issues on Vercel
-    const { FaceMesh } = await import("@mediapipe/face_mesh");
-    const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/";
-    const fm = new FaceMesh({
-      locateFile: (file: string) => `${CDN}${file}`,
-    });
-    fm.setOptions({
-      maxNumFaces: 1,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-
-    fm.onResults((results) => {
-      const faces = results.multiFaceLandmarks;
-      if (faces && faces.length > 0 && faces[0].length > R_IRIS + 4) {
-        const { h, v: vr } = computeIrisRatios(faces[0]);
-        curH = h;
-        curV = vr;
-
-        if (listener) {
-          if (mapCoeffs) {
-            const x = mapCoeffs.ax * h + mapCoeffs.bx;
-            const y = mapCoeffs.ay * vr + mapCoeffs.by;
-            listener({ x, y }, performance.now());
-          } else {
-            // Face detected but no mapping yet — signal face presence
-            listener(
-              { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-              performance.now()
-            );
-          }
-        }
-      } else {
-        // No face
-        if (listener) {
-          listener(null, performance.now());
-        }
-      }
+    // Load FaceLandmarker from CDN (no self-hosted WASM needed)
+    const { FaceLandmarker, FilesetResolver } = await import(
+      "@mediapipe/tasks-vision"
+    );
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+    const fl = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU",
+      },
+      runningMode: "VIDEO",
+      numFaces: 1,
+      outputFaceBlendshapes: false,
+      outputFacialTransformationMatrixes: false,
     });
 
-    faceMesh = fm;
+    faceLandmarker = fl;
     initialized = true;
 
     // Reset calibration
@@ -242,9 +258,9 @@ export function useMediaPipeGaze() {
   const end = useCallback(() => {
     running = false;
     cancelAnimationFrame(rafId);
-    if (faceMesh) {
+    if (faceLandmarker) {
       try {
-        faceMesh.close();
+        faceLandmarker.close();
       } catch {}
     }
     if (stream) {
@@ -253,7 +269,7 @@ export function useMediaPipeGaze() {
     if (video) {
       video.remove();
     }
-    faceMesh = null;
+    faceLandmarker = null;
     video = null;
     stream = null;
     initialized = false;
