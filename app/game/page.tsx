@@ -188,7 +188,7 @@ function GameContent() {
     );
   }, [phase, router, totalDuration, pause]);
 
-  // Admin mode toggle (press A)
+  // Admin mode toggle (press A on desktop)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "a" || e.key === "A") {
@@ -197,6 +197,11 @@ function GameContent() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Admin mode toggle via triple-tap on timer (mobile)
+  const handleAdminTripleTap = useCallback(() => {
+    setAdminMode((prev) => !prev);
   }, []);
 
   // Touch handlers
@@ -258,7 +263,25 @@ function GameContent() {
       {/* Game elements */}
       {phase === "playing" && (
         <>
-          <Timer secondsLeft={secondsLeft} />
+          <Timer
+            secondsLeft={secondsLeft}
+            onTripleTap={handleAdminTripleTap}
+          />
+
+          {/* Split-screen divider */}
+          <div className="pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-px">
+            <div className="mx-auto h-px w-full bg-gradient-to-r from-transparent via-white/8 to-transparent" />
+          </div>
+
+          {/* Zone labels */}
+          <div className="pointer-events-none absolute left-4 top-1/2 z-20 -translate-y-8 text-[10px] font-medium uppercase tracking-widest text-eye-glow/20">
+            Eye tracking
+          </div>
+          <div className="pointer-events-none absolute left-4 top-1/2 z-20 translate-y-3 text-[10px] font-medium uppercase tracking-widest text-touch-glow/20">
+            Touch tracking
+          </div>
+
+          {/* Balls */}
           <Ball ref={eyeBallRef} variant="eye" glowLevel={eyeGlow} />
           <Ball ref={touchBallRef} variant="touch" glowLevel={touchGlow} />
 
@@ -273,8 +296,8 @@ function GameContent() {
 
           {/* Admin mode: label */}
           {adminMode && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-yellow-400/10 px-3 py-1 text-xs text-yellow-400/70">
-              Admin — Gaze Cursor ON (press A to toggle)
+            <div className="absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-yellow-400/10 px-3 py-1 text-xs text-yellow-400/70">
+              Admin — Gaze Cursor ON (triple-tap timer to toggle)
             </div>
           )}
         </>

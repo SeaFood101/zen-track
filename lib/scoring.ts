@@ -16,7 +16,10 @@ export function calculateAccuracy(
 
 export function getMaxDistance(): number {
   if (typeof window === "undefined") return 1000;
-  return Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2) / 2;
+  // Each ball moves within a half-screen, so use half-height for diagonal
+  const w = window.innerWidth;
+  const halfH = window.innerHeight / 2;
+  return Math.sqrt(w ** 2 + halfH ** 2) / 2;
 }
 
 export class RunningAverage {
