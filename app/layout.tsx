@@ -19,6 +19,12 @@ export const metadata: Metadata = {
   title: "Zen Track",
   description:
     "A dual-focus wellness game. Track two balls — one with your eyes, one with your finger — and relax into focus.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Zen Track",
+  },
 };
 
 export default function RootLayout({
@@ -28,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={dmSans.className}>
-      <body className="min-h-dvh bg-animated noise-overlay">{children}</body>
+      <body className="min-h-dvh bg-animated">{children}</body>
     </html>
   );
 }
