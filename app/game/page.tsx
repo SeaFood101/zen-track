@@ -6,7 +6,6 @@ import Ball from "@/components/Ball";
 import Timer from "@/components/Timer";
 import WebGazerScript from "@/components/WebGazerScript";
 import { useWebGazer } from "@/lib/useWebGazer";
-import { useMediaPipeGaze } from "@/lib/useMediaPipeGaze";
 import { getEyeBallPosition, getTouchBallPosition } from "@/lib/ballPaths";
 import {
   calculateAccuracy,
@@ -20,13 +19,8 @@ function GameContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const totalDuration = parseInt(searchParams.get("duration") || "120", 10);
-  const trackerType = searchParams.get("tracker") || "mediapipe";
 
-  // Both hooks always called (React rules), only the selected one is used
-  const webgazerApi = useWebGazer();
-  const mediapipeApi = useMediaPipeGaze();
-  const tracker =
-    trackerType === "mediapipe" ? mediapipeApi : webgazerApi;
+  const { resume, setGazeListener, clearGazeListener, pause } = useWebGazer();
 
   // Phase: countdown → playing → done
   const [phase, setPhase] = useState<"countdown" | "playing" | "done">(
@@ -42,7 +36,7 @@ function GameContent() {
   );
   const [scriptReady, setScriptReady] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
-  const [faceWarning, setFaceWarning] = useState(0);
+  const [faceWarning, setFaceWarning] = useState(0); // 0 = fine, 1 = max warning
 
   // DOM refs for imperative position updates
   const eyeBallRef = useRef<HTMLDivElement>(null);
@@ -62,7 +56,7 @@ function GameContent() {
   const animFrameRef = useRef<number>(0);
   const lastSampleTime = useRef(0);
   const gameStartTime = useRef(0);
-  const nullGazeCount = useRef(0);
+  const nullGazeCount = useRef(0); // consecutive null readings from WebGazer
 
   // Redirect to home on refresh / direct URL access
   useEffect(() => {
@@ -70,9 +64,6 @@ function GameContent() {
       router.replace("/");
     }
   }, [router]);
-
-  // For WebGazer: ready when script loads. For MediaPipe: always ready.
-  const canResume = trackerType === "mediapipe" || scriptReady;
 
   // Countdown phase
   useEffect(() => {
@@ -92,9 +83,10 @@ function GameContent() {
     gameStartTime.current = performance.now();
     lastSampleTime.current = performance.now();
 
-    if (canResume) {
-      tracker.resume().then(() => {
-        tracker.setGazeListener((data) => {
+    // Resume WebGazer and set gaze listener
+    if (scriptReady) {
+      resume().then(() => {
+        setGazeListener((data) => {
           if (data) {
             gazePos.current = { x: data.x, y: data.y };
             nullGazeCount.current = 0;
@@ -105,10 +97,8 @@ function GameContent() {
             }
           } else {
             nullGazeCount.current++;
-            const level = Math.min(
-              1,
-              Math.max(0, (nullGazeCount.current - 10) / 20)
-            );
+            // Ramp up warning: starts at ~10 misses (~1s), maxes at ~30 (~3s)
+            const level = Math.min(1, Math.max(0, (nullGazeCount.current - 10) / 20));
             setFaceWarning(level);
           }
         });
@@ -121,6 +111,7 @@ function GameContent() {
       const w = window.innerWidth;
       const h = window.innerHeight;
 
+      // Update ball positions imperatively
       const eyeP = getEyeBallPosition(elapsed, w, h);
       const touchP = getTouchBallPosition(elapsed, w, h);
       eyeBallPos.current = eyeP;
@@ -140,6 +131,7 @@ function GameContent() {
         lastSampleTime.current = now;
         const maxDist = getMaxDistance();
 
+        // Eye accuracy
         if (gazePos.current) {
           const eyeAcc = calculateAccuracy(
             gazePos.current,
@@ -147,11 +139,13 @@ function GameContent() {
             maxDist
           );
           eyeAvg.current.add(eyeAcc);
+
           if (eyeAcc > 70) setEyeGlow("bright");
           else if (eyeAcc < 40) setEyeGlow("dim");
           else setEyeGlow("normal");
         }
 
+        // Touch accuracy
         if (touchPos.current) {
           const touchAcc = calculateAccuracy(
             touchPos.current,
@@ -159,6 +153,7 @@ function GameContent() {
             maxDist
           );
           touchAvg.current.add(touchAcc);
+
           if (touchAcc > 70) setTouchGlow("bright");
           else if (touchAcc < 40) setTouchGlow("dim");
           else setTouchGlow("normal");
@@ -168,6 +163,7 @@ function GameContent() {
         }
       }
 
+      // Update timer display (~1/sec)
       const newSecondsLeft = Math.ceil(remaining);
       setSecondsLeft(newSecondsLeft);
 
@@ -183,15 +179,22 @@ function GameContent() {
 
     return () => {
       cancelAnimationFrame(animFrameRef.current);
-      tracker.clearGazeListener();
+      clearGazeListener();
     };
-  }, [phase, totalDuration, canResume, tracker]);
+  }, [
+    phase,
+    totalDuration,
+    scriptReady,
+    resume,
+    setGazeListener,
+    clearGazeListener,
+  ]);
 
   // Navigate to results when done
   useEffect(() => {
     if (phase !== "done") return;
 
-    tracker.pause();
+    pause();
 
     const eye = Math.round(eyeAvg.current.average * 10) / 10;
     const touch = Math.round(touchAvg.current.average * 10) / 10;
@@ -201,7 +204,7 @@ function GameContent() {
     router.push(
       `/results?eye=${eye}&touch=${touch}&combined=${combined}&duration=${totalDuration}`
     );
-  }, [phase, router, totalDuration, tracker]);
+  }, [phase, router, totalDuration, pause]);
 
   // Admin mode toggle (press A on desktop)
   useEffect(() => {
@@ -214,6 +217,7 @@ function GameContent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Admin mode toggle via triple-tap on timer (mobile)
   const handleAdminTripleTap = useCallback(() => {
     setAdminMode((prev) => !prev);
   }, []);
@@ -235,6 +239,7 @@ function GameContent() {
     touchPos.current = null;
   }, []);
 
+  // Mouse fallback for desktop testing
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     touchPos.current = { x: e.clientX, y: e.clientY };
   }, []);
@@ -259,10 +264,7 @@ function GameContent() {
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
     >
-      {/* Only load WebGazer script if that tracker is selected */}
-      {trackerType === "webgazer" && (
-        <WebGazerScript onReady={() => setScriptReady(true)} />
-      )}
+      <WebGazerScript onReady={() => setScriptReady(true)} />
 
       {/* Countdown overlay */}
       {phase === "countdown" && (

@@ -9,10 +9,10 @@ export function useWebGazer() {
     if (initializedRef.current) return;
     if (typeof window === "undefined" || !window.webgazer) return;
 
-    // Request camera permission first so we get a clear error on denial
-    const preStream = await navigator.mediaDevices.getUserMedia({ video: true });
-    // Stop it — WebGazer will open its own stream
-    preStream.getTracks().forEach((t) => t.stop());
+    // Request camera permission explicitly first so we get a clear error
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    // Stop the stream — WebGazer will open its own
+    stream.getTracks().forEach((track) => track.stop());
 
     const wg = window.webgazer;
 
@@ -63,12 +63,6 @@ export function useWebGazer() {
     initializedRef.current = false;
   }, []);
 
-  const getStream = useCallback((): MediaStream | null => {
-    // WebGazer creates a video element with id "webgazerVideoFeed"
-    const videoEl = document.getElementById("webgazerVideoFeed") as HTMLVideoElement | null;
-    return (videoEl?.srcObject as MediaStream) ?? null;
-  }, []);
-
   return {
     initialize,
     recordCalibrationPoint,
@@ -77,6 +71,5 @@ export function useWebGazer() {
     pause,
     resume,
     end,
-    getStream,
   };
 }
