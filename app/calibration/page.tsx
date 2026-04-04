@@ -40,6 +40,7 @@ function CalibrationContent() {
   const [currentPoint, setCurrentPoint] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [faceDetected, setFaceDetected] = useState(false);
+  const [debugStatus, setDebugStatus] = useState("");
 
   // Redirect to home on refresh / direct URL access
   useEffect(() => {
@@ -112,10 +113,19 @@ function CalibrationContent() {
   const handleAllowCamera = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setDebugStatus("Initializing tracker...");
     try {
       await tracker.initialize();
+      setDebugStatus("Tracker ready, starting listener...");
       // Start gaze listener for face detection + yellow cursor
+      let gazeCallCount = 0;
       tracker.setGazeListener((data) => {
+        gazeCallCount++;
+        if (gazeCallCount <= 3 || gazeCallCount % 30 === 0) {
+          setDebugStatus(
+            `Gaze #${gazeCallCount}: ${data ? `x=${Math.round(data.x)},y=${Math.round(data.y)}` : "null"}`
+          );
+        }
         if (data && gazeCursorRef.current) {
           gazeCursorRef.current.style.left = `${data.x}px`;
           gazeCursorRef.current.style.top = `${data.y}px`;
@@ -130,8 +140,11 @@ function CalibrationContent() {
         }
       });
       await startPreview();
+      setDebugStatus("Preview started, waiting for face...");
       setPhase("positioning");
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDebugStatus(`Error: ${msg}`);
       setError(
         "Camera access is needed for eye tracking. Please allow camera access and try again."
       );
@@ -300,6 +313,13 @@ function CalibrationContent() {
               Hold upright at arm&apos;s length · Good lighting · No backlight
             </p>
           </div>
+
+          {/* Debug status — visible on mobile to diagnose tracking issues */}
+          {debugStatus && (
+            <p className="max-w-xs break-all text-center text-[10px] text-text-muted/40">
+              {debugStatus}
+            </p>
+          )}
 
           <button
             onClick={handleStartCalibration}

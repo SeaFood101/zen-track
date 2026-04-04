@@ -163,10 +163,11 @@ export function useMediaPipeGaze() {
     });
     video = v;
 
-    // Load FaceMesh
+    // Load FaceMesh — use CDN to avoid MIME-type / static-file issues on Vercel
     const { FaceMesh } = await import("@mediapipe/face_mesh");
+    const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/";
     const fm = new FaceMesh({
-      locateFile: (file: string) => `/mediapipe/face_mesh/${file}`,
+      locateFile: (file: string) => `${CDN}${file}`,
     });
     fm.setOptions({
       maxNumFaces: 1,
@@ -178,14 +179,14 @@ export function useMediaPipeGaze() {
     fm.onResults((results) => {
       const faces = results.multiFaceLandmarks;
       if (faces && faces.length > 0 && faces[0].length > R_IRIS + 4) {
-        const { h, v } = computeIrisRatios(faces[0]);
+        const { h, v: vr } = computeIrisRatios(faces[0]);
         curH = h;
-        curV = v;
+        curV = vr;
 
         if (listener) {
           if (mapCoeffs) {
             const x = mapCoeffs.ax * h + mapCoeffs.bx;
-            const y = mapCoeffs.ay * v + mapCoeffs.by;
+            const y = mapCoeffs.ay * vr + mapCoeffs.by;
             listener({ x, y }, performance.now());
           } else {
             // Face detected but no mapping yet — signal face presence

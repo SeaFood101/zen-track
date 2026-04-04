@@ -9,6 +9,11 @@ export function useWebGazer() {
     if (initializedRef.current) return;
     if (typeof window === "undefined" || !window.webgazer) return;
 
+    // Request camera permission first so we get a clear error on denial
+    const preStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    // Stop it — WebGazer will open its own stream
+    preStream.getTracks().forEach((t) => t.stop());
+
     const wg = window.webgazer;
 
     wg.showVideoPreview(false)
