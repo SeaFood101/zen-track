@@ -47,7 +47,6 @@ function CalibrationContent() {
   const [loading, setLoading] = useState(false);
   const [currentPoint, setCurrentPoint] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [faceDetected, setFaceDetected] = useState(false);
 
   // Dwell state
   const [dwellActive, setDwellActive] = useState(false);
@@ -75,7 +74,6 @@ function CalibrationContent() {
   const gazeCursorRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectionCount = useRef(0);
 
   // Start camera preview stream
   const startPreview = useCallback(async () => {
@@ -228,20 +226,6 @@ function CalibrationContent() {
     setError(null);
     try {
       await initialize();
-      setGazeListener((data) => {
-        if (data && gazeCursorRef.current) {
-          gazeCursorRef.current.style.left = `${data.x}px`;
-          gazeCursorRef.current.style.top = `${data.y}px`;
-          gazeCursorRef.current.style.opacity = "1";
-        }
-        if (data) {
-          detectionCount.current++;
-          if (detectionCount.current >= 5) setFaceDetected(true);
-        } else {
-          detectionCount.current = 0;
-          setFaceDetected(false);
-        }
-      });
       await startPreview();
       setPhase("positioning");
     } catch {
@@ -251,7 +235,7 @@ function CalibrationContent() {
     } finally {
       setLoading(false);
     }
-  }, [initialize, setGazeListener, startPreview]);
+  }, [initialize, startPreview]);
 
   // Phase 2 → 3: Start calibration
   const handleStartCalibration = useCallback(() => {
@@ -296,7 +280,7 @@ function CalibrationContent() {
   }, [router, duration, stopPreview]);
 
   const showGazeCursor =
-    phase === "positioning" || phase === "calibrating" || phase === "validating" || phase === "ready";
+    phase === "calibrating" || phase === "validating" || phase === "ready";
 
   // SVG ring for dwell countdown
   const ringRadius = 26;
@@ -388,28 +372,13 @@ function CalibrationContent() {
               className="h-full w-full -scale-x-100 object-cover"
             />
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div
-                className={`h-40 w-28 rounded-full border-2 border-dashed transition-colors duration-500 ${
-                  faceDetected ? "border-eye-glow/60" : "border-white/20"
-                }`}
-              />
+              <div className="h-40 w-28 rounded-full border-2 border-dashed border-eye-glow/40" />
             </div>
           </div>
 
-          <div
-            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-500 ${
-              faceDetected
-                ? "bg-eye-glow/10 text-eye-glow"
-                : "bg-white/5 text-text-muted/60"
-            }`}
-          >
-            <div
-              className={`h-2 w-2 rounded-full transition-colors duration-500 ${
-                faceDetected ? "bg-eye-glow animate-pulse" : "bg-text-muted/30"
-              }`}
-            />
-            {faceDetected ? "Face detected — looking good!" : "Align your face in the oval"}
-          </div>
+          <p className="text-sm font-medium text-text-muted">
+            Center your face in the oval
+          </p>
 
           <div className="flex flex-col gap-1.5 text-xs leading-relaxed text-text-muted/60">
             <p>Hold upright at arm&apos;s length · Good lighting · No backlight</p>
@@ -417,11 +386,7 @@ function CalibrationContent() {
 
           <button
             onClick={handleStartCalibration}
-            className={`mt-1 h-14 w-52 cursor-pointer rounded-full border text-lg font-semibold transition-all duration-500 ease-in-out ${
-              faceDetected
-                ? "border-eye-glow/50 bg-eye-glow/18 text-eye-glow shadow-[0_0_24px_6px_rgba(94,234,212,0.12)]"
-                : "border-white/12 bg-white/6 text-text-primary/50"
-            }`}
+            className="mt-1 h-14 w-52 cursor-pointer rounded-full border border-eye-glow/50 bg-eye-glow/18 text-lg font-semibold text-eye-glow shadow-[0_0_24px_6px_rgba(94,234,212,0.12)] transition-all duration-500 ease-in-out"
           >
             Start Calibration
           </button>
