@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -12,7 +11,6 @@ const durations = [
 ];
 
 export default function Home() {
-  const [selected, setSelected] = useState<number | null>(null);
   const router = useRouter();
 
   return (
@@ -30,31 +28,13 @@ export default function Home() {
         {durations.map((d) => (
           <button
             key={d.value}
-            onClick={() => setSelected(d.value)}
-            className={`h-14 w-52 cursor-pointer rounded-full border text-lg font-medium transition-all duration-400 ease-in-out ${
-              selected === d.value
-                ? "border-eye-glow/40 bg-eye-glow/12 text-eye-glow shadow-[0_0_20px_4px_rgba(94,234,212,0.15)]"
-                : "border-white/8 bg-white/4 text-text-primary/70"
-            }`}
+            onClick={() => router.push(`/calibration?duration=${d.value}`)}
+            className="h-14 w-52 cursor-pointer rounded-full border border-white/8 bg-white/4 text-lg font-medium text-text-primary/70 transition-all duration-400 ease-in-out active:border-eye-glow/40 active:bg-eye-glow/12 active:text-eye-glow active:shadow-[0_0_20px_4px_rgba(94,234,212,0.15)]"
           >
             {d.label}
           </button>
         ))}
       </div>
-
-      <button
-        onClick={() => {
-          if (selected) router.push(`/calibration?duration=${selected}`);
-        }}
-        disabled={!selected}
-        className={`mt-12 h-14 w-52 cursor-pointer rounded-full border text-lg font-semibold transition-all duration-500 ease-in-out ${
-          selected
-            ? "border-eye-glow/50 bg-eye-glow/18 text-eye-glow shadow-[0_0_24px_6px_rgba(94,234,212,0.12)]"
-            : "border-white/6 bg-white/3 text-text-primary/25 opacity-50"
-        }`}
-      >
-        Begin
-      </button>
 
       <Link
         href="/history"
