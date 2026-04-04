@@ -63,6 +63,8 @@ export function useWebGazer() {
     initializedRef.current = false;
   }, []);
 
+  const getStream = useCallback((): MediaStream | null => null, []);
+
   return {
     initialize,
     recordCalibrationPoint,
@@ -71,5 +73,6 @@ export function useWebGazer() {
     pause,
     resume,
     end,
+    getStream,
   };
 }

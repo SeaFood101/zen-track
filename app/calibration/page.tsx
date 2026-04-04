@@ -4,9 +4,10 @@ import { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import WebGazerScript from "@/components/WebGazerScript";
 import { useWebGazer } from "@/lib/useWebGazer";
+import { useMediaPipeGaze } from "@/lib/useMediaPipeGaze";
 import { hasNavigated, markNavigated } from "@/lib/navigation";
 
-// 9-point grid: 3×3 at 12%, 50%, 88%
+// 9-point grid: 3x3 at 12%, 50%, 88%
 const CALIBRATION_POINTS = [
   { x: 50, y: 50 },
   { x: 12, y: 12 },
@@ -23,14 +24,13 @@ function CalibrationContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const duration = searchParams.get("duration") || "120";
+  const trackerType = searchParams.get("tracker") || "mediapipe";
 
-  const {
-    initialize,
-    recordCalibrationPoint,
-    setGazeListener,
-    clearGazeListener,
-    pause,
-  } = useWebGazer();
+  // Both hooks always called (React rules), only the selected one is used
+  const webgazerApi = useWebGazer();
+  const mediapipeApi = useMediaPipeGaze();
+  const tracker =
+    trackerType === "mediapipe" ? mediapipeApi : webgazerApi;
 
   const [phase, setPhase] = useState<
     "permission" | "positioning" | "calibrating" | "ready"
@@ -52,25 +52,35 @@ function CalibrationContent() {
   const gazeCursorRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const ownStreamRef = useRef(false); // true if we created the stream ourselves
   const detectionCount = useRef(0);
 
-  // Start camera preview stream (stores in ref, video element picks it up via callback ref)
-  const startPreview = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } },
-      });
-      streamRef.current = stream;
-      // If video element already mounted, connect immediately
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+  // Start camera preview — reuses tracker stream if available, else creates own
+  const startPreview = useCallback(
+    async () => {
+      try {
+        const trackerStream = tracker.getStream();
+        if (trackerStream) {
+          streamRef.current = trackerStream;
+          ownStreamRef.current = false;
+        } else {
+          const s = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } },
+          });
+          streamRef.current = s;
+          ownStreamRef.current = true;
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = streamRef.current;
+        }
+      } catch {
+        // best-effort
       }
-    } catch {
-      // Preview is best-effort — WebGazer has its own stream
-    }
-  }, []);
+    },
+    [tracker]
+  );
 
-  // Callback ref for video elements — connects stream when element mounts
+  // Callback ref — connects stream when video element mounts
   const setVideoRef = useCallback((el: HTMLVideoElement | null) => {
     videoRef.current = el;
     if (el && streamRef.current) {
@@ -78,30 +88,34 @@ function CalibrationContent() {
     }
   }, []);
 
-  // Stop camera preview stream
+  // Stop preview — only stops stream if we own it
   const stopPreview = useCallback(() => {
-    if (streamRef.current) {
+    if (streamRef.current && ownStreamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
     }
+    streamRef.current = null;
+    ownStreamRef.current = false;
   }, []);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
-      clearGazeListener();
+      tracker.clearGazeListener();
       stopPreview();
     };
-  }, [clearGazeListener, stopPreview]);
+  }, [tracker, stopPreview]);
 
-  // Phase 1 → 2: Allow camera, go to positioning with live preview
+  // For WebGazer: ready when script loads. For MediaPipe: always ready (no script needed)
+  const isReady = trackerType === "mediapipe" || scriptReady;
+
+  // Phase 1 → 2: Allow camera, go to positioning
   const handleAllowCamera = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      await initialize();
+      await tracker.initialize();
       // Start gaze listener for face detection + yellow cursor
-      setGazeListener((data) => {
+      tracker.setGazeListener((data) => {
         if (data && gazeCursorRef.current) {
           gazeCursorRef.current.style.left = `${data.x}px`;
           gazeCursorRef.current.style.top = `${data.y}px`;
@@ -115,7 +129,6 @@ function CalibrationContent() {
           setFaceDetected(false);
         }
       });
-      // Start our preview stream
       await startPreview();
       setPhase("positioning");
     } catch {
@@ -125,9 +138,9 @@ function CalibrationContent() {
     } finally {
       setLoading(false);
     }
-  }, [initialize, setGazeListener, startPreview]);
+  }, [tracker, startPreview]);
 
-  // Phase 2 → 3: Start calibration (stop preview, no longer needed)
+  // Phase 2 → 3: Start calibration
   const handleStartCalibration = useCallback(() => {
     stopPreview();
     setPhase("calibrating");
@@ -142,32 +155,35 @@ function CalibrationContent() {
       const y = (point.y / 100) * window.innerHeight;
 
       for (let i = 0; i < 5; i++) {
-        recordCalibrationPoint(x, y);
+        tracker.recordCalibrationPoint(x, y);
       }
 
       if (currentPoint < CALIBRATION_POINTS.length - 1) {
         setCurrentPoint((prev) => prev + 1);
       } else {
-        pause();
+        tracker.pause();
         stopPreview();
         setPhase("ready");
       }
     },
-    [currentPoint, recordCalibrationPoint, pause, stopPreview]
+    [currentPoint, tracker, stopPreview]
   );
 
   const handleStart = useCallback(() => {
     stopPreview();
     markNavigated();
-    router.push(`/game?duration=${duration}`);
-  }, [router, duration, stopPreview]);
+    router.push(`/game?duration=${duration}&tracker=${trackerType}`);
+  }, [router, duration, trackerType, stopPreview]);
 
   const showGazeCursor =
     phase === "positioning" || phase === "calibrating" || phase === "ready";
 
   return (
     <div className="animate-fade-in flex min-h-dvh flex-col items-center justify-center px-6">
-      <WebGazerScript onReady={() => setScriptReady(true)} />
+      {/* Only load WebGazer script if that tracker is selected */}
+      {trackerType === "webgazer" && (
+        <WebGazerScript onReady={() => setScriptReady(true)} />
+      )}
 
       {/* ── Phase 1: Camera Permission ── */}
       {phase === "permission" && (
@@ -192,24 +208,27 @@ function CalibrationContent() {
           </h2>
 
           <p className="text-base leading-relaxed text-text-muted">
-            We use your camera to track your eyes during the session. Nothing is
-            recorded or stored.
+            Using{" "}
+            <span className="text-eye-glow/80 font-medium">
+              {trackerType === "mediapipe" ? "MediaPipe Face Mesh" : "WebGazer"}
+            </span>
+            . We use your camera to track your eyes. Nothing is recorded.
           </p>
 
           {error && <p className="text-sm text-touch-glow/80">{error}</p>}
 
           <button
             onClick={handleAllowCamera}
-            disabled={!scriptReady || loading}
+            disabled={!isReady || loading}
             className={`mt-4 h-14 w-52 cursor-pointer rounded-full border text-lg font-semibold transition-all duration-500 ease-in-out ${
-              scriptReady && !loading
+              isReady && !loading
                 ? "border-eye-glow/50 bg-eye-glow/18 text-eye-glow"
                 : "border-white/6 bg-white/3 text-text-primary/25 opacity-50"
             }`}
           >
             {loading
               ? "Starting camera..."
-              : !scriptReady
+              : !isReady
                 ? "Loading..."
                 : "Allow Camera"}
           </button>
@@ -242,7 +261,6 @@ function CalibrationContent() {
       {/* ── Phase 2: Positioning — Live Camera Mirror ── */}
       {phase === "positioning" && (
         <div className="flex w-full max-w-xs flex-col items-center gap-5 text-center">
-          {/* Camera preview */}
           <div className="relative mx-auto h-56 w-56 overflow-hidden rounded-3xl border-2 border-white/10 bg-black/40">
             <video
               ref={setVideoRef}
@@ -251,7 +269,6 @@ function CalibrationContent() {
               muted
               className="h-full w-full -scale-x-100 object-cover"
             />
-            {/* Face guide oval */}
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div
                 className={`h-40 w-28 rounded-full border-2 border-dashed transition-colors duration-500 ${
@@ -261,7 +278,6 @@ function CalibrationContent() {
             </div>
           </div>
 
-          {/* Face detection status */}
           <div
             className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-500 ${
               faceDetected
@@ -274,14 +290,17 @@ function CalibrationContent() {
                 faceDetected ? "bg-eye-glow animate-pulse" : "bg-text-muted/30"
               }`}
             />
-            {faceDetected ? "Face detected — looking good!" : "Align your face in the oval"}
+            {faceDetected
+              ? "Face detected — looking good!"
+              : "Align your face in the oval"}
           </div>
 
           <div className="flex flex-col gap-1.5 text-xs leading-relaxed text-text-muted/60">
-            <p>Hold upright at arm&apos;s length · Good lighting · No backlight</p>
+            <p>
+              Hold upright at arm&apos;s length · Good lighting · No backlight
+            </p>
           </div>
 
-          {/* Always tappable — face detection is just a hint */}
           <button
             onClick={handleStartCalibration}
             className={`mt-1 h-14 w-52 cursor-pointer rounded-full border text-lg font-semibold transition-all duration-500 ease-in-out ${
@@ -310,7 +329,6 @@ function CalibrationContent() {
             {CALIBRATION_POINTS.length}
           </p>
 
-          {/* Progress bar */}
           <div className="absolute left-6 right-6 top-16 h-1 overflow-hidden rounded-full bg-white/5">
             <div
               className="h-full rounded-full bg-eye-glow/40 transition-all duration-500 ease-out"
