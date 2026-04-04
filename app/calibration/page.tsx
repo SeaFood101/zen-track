@@ -6,17 +6,17 @@ import WebGazerScript from "@/components/WebGazerScript";
 import { useWebGazer } from "@/lib/useWebGazer";
 import { hasNavigated, markNavigated } from "@/lib/navigation";
 
-// 9-point grid: 3×3 at 12%, 50%, 88% — covers the full screen well
+// 9-point grid: 3×3 at 12%, 50%, 88%
 const CALIBRATION_POINTS = [
-  { x: 50, y: 50 },  // center first
-  { x: 12, y: 12 },  // top-left
-  { x: 50, y: 12 },  // top-center
-  { x: 88, y: 12 },  // top-right
-  { x: 88, y: 50 },  // middle-right
-  { x: 88, y: 88 },  // bottom-right
-  { x: 50, y: 88 },  // bottom-center
-  { x: 12, y: 88 },  // bottom-left
-  { x: 12, y: 50 },  // middle-left
+  { x: 50, y: 50 },
+  { x: 12, y: 12 },
+  { x: 50, y: 12 },
+  { x: 88, y: 12 },
+  { x: 88, y: 50 },
+  { x: 88, y: 88 },
+  { x: 50, y: 88 },
+  { x: 12, y: 88 },
+  { x: 12, y: 50 },
 ];
 
 function CalibrationContent() {
@@ -48,36 +48,66 @@ function CalibrationContent() {
     }
   }, [router]);
 
-  // Gaze cursor ref
+  // Refs
   const gazeCursorRef = useRef<HTMLDivElement>(null);
-  // Track consecutive detections for stability
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const detectionCount = useRef(0);
 
-  // Phase 1 → 2: Allow camera, then go to positioning
+  // Start camera preview stream
+  const startPreview = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch {
+      // Preview is best-effort — WebGazer has its own stream
+    }
+  }, []);
+
+  // Stop camera preview stream
+  const stopPreview = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      clearGazeListener();
+      stopPreview();
+    };
+  }, [clearGazeListener, stopPreview]);
+
+  // Phase 1 → 2: Allow camera, go to positioning with live preview
   const handleAllowCamera = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       await initialize();
-      // Start gaze listener — used for face detection + yellow cursor
+      // Start gaze listener for face detection + yellow cursor
       setGazeListener((data) => {
         if (data && gazeCursorRef.current) {
           gazeCursorRef.current.style.left = `${data.x}px`;
           gazeCursorRef.current.style.top = `${data.y}px`;
           gazeCursorRef.current.style.opacity = "1";
         }
-        // Track face detection stability
         if (data) {
           detectionCount.current++;
-          // Require 5 consecutive readings (~500ms) before confirming
-          if (detectionCount.current >= 5) {
-            setFaceDetected(true);
-          }
+          if (detectionCount.current >= 5) setFaceDetected(true);
         } else {
           detectionCount.current = 0;
           setFaceDetected(false);
         }
       });
+      // Start our preview stream
+      await startPreview();
       setPhase("positioning");
     } catch {
       setError(
@@ -86,9 +116,9 @@ function CalibrationContent() {
     } finally {
       setLoading(false);
     }
-  }, [initialize, setGazeListener]);
+  }, [initialize, setGazeListener, startPreview]);
 
-  // Phase 2 → 3: Positioning confirmed, start calibration
+  // Phase 2 → 3: Start calibration
   const handleStartCalibration = useCallback(() => {
     setPhase("calibrating");
   }, []);
@@ -101,7 +131,6 @@ function CalibrationContent() {
       const x = (point.x / 100) * window.innerWidth;
       const y = (point.y / 100) * window.innerHeight;
 
-      // Record multiple clicks for better calibration
       for (let i = 0; i < 5; i++) {
         recordCalibrationPoint(x, y);
       }
@@ -110,23 +139,18 @@ function CalibrationContent() {
         setCurrentPoint((prev) => prev + 1);
       } else {
         pause();
+        stopPreview();
         setPhase("ready");
       }
     },
-    [currentPoint, recordCalibrationPoint, pause]
+    [currentPoint, recordCalibrationPoint, pause, stopPreview]
   );
 
   const handleStart = useCallback(() => {
+    stopPreview();
     markNavigated();
     router.push(`/game?duration=${duration}`);
-  }, [router, duration]);
-
-  // Clean up gaze listener on unmount
-  useEffect(() => {
-    return () => {
-      clearGazeListener();
-    };
-  }, [clearGazeListener]);
+  }, [router, duration, stopPreview]);
 
   const showGazeCursor =
     phase === "positioning" || phase === "calibrating" || phase === "ready";
@@ -205,44 +229,26 @@ function CalibrationContent() {
         />
       )}
 
-      {/* ── Phase 2: Positioning Check ── */}
+      {/* ── Phase 2: Positioning — Live Camera Mirror ── */}
       {phase === "positioning" && (
-        <div className="flex max-w-xs flex-col items-center gap-6 text-center">
-          {/* Phone holding illustration */}
-          <div className="relative flex h-28 w-28 items-center justify-center">
-            {/* Outer pulse ring when face detected */}
-            <div
-              className={`absolute inset-0 rounded-full transition-all duration-700 ${
-                faceDetected
-                  ? "animate-pulse bg-eye-glow/10"
-                  : "bg-white/5"
-              }`}
+        <div className="flex w-full max-w-xs flex-col items-center gap-5 text-center">
+          {/* Camera preview */}
+          <div className="relative mx-auto h-56 w-56 overflow-hidden rounded-3xl border-2 border-white/10 bg-black/40">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="h-full w-full -scale-x-100 object-cover"
             />
-            {/* Face icon */}
-            <svg
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              className={`relative z-10 transition-colors duration-500 ${
-                faceDetected ? "text-eye-glow" : "text-text-muted/40"
-              }`}
-            >
-              <circle cx="12" cy="8" r="5" />
-              <path d="M20 21a8 8 0 0 0-16 0" />
-            </svg>
-          </div>
-
-          <h2 className="text-2xl font-semibold text-text-primary">
-            Position Yourself
-          </h2>
-
-          <div className="flex flex-col gap-3 text-sm leading-relaxed text-text-muted">
-            <p>Hold your phone upright at arm&apos;s length</p>
-            <p>Keep your face centered on screen</p>
-            <p>Find a well-lit spot — avoid backlight</p>
+            {/* Face guide oval */}
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div
+                className={`h-40 w-28 rounded-full border-2 border-dashed transition-colors duration-500 ${
+                  faceDetected ? "border-eye-glow/60" : "border-white/20"
+                }`}
+              />
+            </div>
           </div>
 
           {/* Face detection status */}
@@ -258,16 +264,20 @@ function CalibrationContent() {
                 faceDetected ? "bg-eye-glow animate-pulse" : "bg-text-muted/30"
               }`}
             />
-            {faceDetected ? "Face detected" : "Looking for your face..."}
+            {faceDetected ? "Face detected — looking good!" : "Align your face in the oval"}
           </div>
 
+          <div className="flex flex-col gap-1.5 text-xs leading-relaxed text-text-muted/60">
+            <p>Hold upright at arm&apos;s length · Good lighting · No backlight</p>
+          </div>
+
+          {/* Always tappable — face detection is just a hint */}
           <button
             onClick={handleStartCalibration}
-            disabled={!faceDetected}
-            className={`mt-2 h-14 w-52 cursor-pointer rounded-full border text-lg font-semibold transition-all duration-500 ease-in-out ${
+            className={`mt-1 h-14 w-52 cursor-pointer rounded-full border text-lg font-semibold transition-all duration-500 ease-in-out ${
               faceDetected
-                ? "border-eye-glow/50 bg-eye-glow/18 text-eye-glow"
-                : "border-white/6 bg-white/3 text-text-primary/25 opacity-50"
+                ? "border-eye-glow/50 bg-eye-glow/18 text-eye-glow shadow-[0_0_24px_6px_rgba(94,234,212,0.12)]"
+                : "border-white/12 bg-white/6 text-text-primary/50"
             }`}
           >
             Start Calibration
@@ -275,7 +285,7 @@ function CalibrationContent() {
 
           <button
             onClick={handleStart}
-            className="mt-2 cursor-pointer text-sm text-text-muted/50 transition-colors duration-300 hover:text-text-primary"
+            className="cursor-pointer text-sm text-text-muted/40 transition-colors duration-300 hover:text-text-primary"
           >
             Skip calibration
           </button>
@@ -285,6 +295,22 @@ function CalibrationContent() {
       {/* ── Phase 3: Calibration (9 points) ── */}
       {phase === "calibrating" && (
         <div className="fixed inset-0 z-20">
+          {/* Small camera thumbnail */}
+          <div className="absolute right-4 top-4 z-30 h-20 w-28 overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-lg">
+            <video
+              ref={(el) => {
+                // Reuse the same stream for the thumbnail
+                if (el && streamRef.current) {
+                  el.srcObject = streamRef.current;
+                }
+              }}
+              autoPlay
+              playsInline
+              muted
+              className="h-full w-full -scale-x-100 object-cover"
+            />
+          </div>
+
           <p className="absolute left-1/2 top-8 -translate-x-1/2 text-sm text-text-muted">
             Look at the dot and tap it — {currentPoint + 1} of{" "}
             {CALIBRATION_POINTS.length}
