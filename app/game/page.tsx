@@ -36,6 +36,7 @@ function GameContent() {
   );
   const [scriptReady, setScriptReady] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
+  const [faceWarning, setFaceWarning] = useState(0); // 0 = fine, 1 = max warning
 
   // DOM refs for imperative position updates
   const eyeBallRef = useRef<HTMLDivElement>(null);
@@ -55,6 +56,7 @@ function GameContent() {
   const animFrameRef = useRef<number>(0);
   const lastSampleTime = useRef(0);
   const gameStartTime = useRef(0);
+  const nullGazeCount = useRef(0); // consecutive null readings from WebGazer
 
   // Redirect to home on refresh / direct URL access
   useEffect(() => {
@@ -87,10 +89,17 @@ function GameContent() {
         setGazeListener((data) => {
           if (data) {
             gazePos.current = { x: data.x, y: data.y };
+            nullGazeCount.current = 0;
+            setFaceWarning(0);
             if (gazeCursorRef.current) {
               gazeCursorRef.current.style.left = `${data.x}px`;
               gazeCursorRef.current.style.top = `${data.y}px`;
             }
+          } else {
+            nullGazeCount.current++;
+            // Ramp up warning: starts at ~10 misses (~1s), maxes at ~30 (~3s)
+            const level = Math.min(1, Math.max(0, (nullGazeCount.current - 10) / 20));
+            setFaceWarning(level);
           }
         });
       });
@@ -267,6 +276,18 @@ function GameContent() {
             {countdown > 0 ? countdown : ""}
           </span>
         </div>
+      )}
+
+      {/* Face misalignment warning — red vignette */}
+      {phase === "playing" && faceWarning > 0 && (
+        <div
+          className="pointer-events-none fixed inset-0 z-40 transition-opacity duration-500"
+          style={{
+            opacity: faceWarning,
+            background:
+              "radial-gradient(ellipse at center, transparent 40%, rgba(220, 38, 38, 0.35) 100%)",
+          }}
+        />
       )}
 
       {/* Game elements */}

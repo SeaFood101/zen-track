@@ -127,10 +127,11 @@ function CalibrationContent() {
     }
   }, [initialize, setGazeListener, startPreview]);
 
-  // Phase 2 → 3: Start calibration
+  // Phase 2 → 3: Start calibration (stop preview, no longer needed)
   const handleStartCalibration = useCallback(() => {
+    stopPreview();
     setPhase("calibrating");
-  }, []);
+  }, [stopPreview]);
 
   // Calibration dot tap
   const handleDotTap = useCallback(
@@ -304,17 +305,6 @@ function CalibrationContent() {
       {/* ── Phase 3: Calibration (9 points) ── */}
       {phase === "calibrating" && (
         <div className="fixed inset-0 z-20">
-          {/* Small camera thumbnail */}
-          <div className="absolute right-4 top-4 z-30 h-20 w-28 overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-lg">
-            <video
-              ref={setVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="h-full w-full -scale-x-100 object-cover"
-            />
-          </div>
-
           <p className="absolute left-1/2 top-8 -translate-x-1/2 text-sm text-text-muted">
             Look at the dot and tap it — {currentPoint + 1} of{" "}
             {CALIBRATION_POINTS.length}
