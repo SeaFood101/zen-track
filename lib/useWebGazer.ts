@@ -63,6 +63,11 @@ export function useWebGazer() {
     initializedRef.current = false;
   }, []);
 
+  const clearData = useCallback(() => {
+    if (typeof window === "undefined" || !window.webgazer) return;
+    window.webgazer.clearData();
+  }, []);
+
   return {
     initialize,
     recordCalibrationPoint,
@@ -71,5 +76,6 @@ export function useWebGazer() {
     pause,
     resume,
     end,
+    clearData,
   };
 }
