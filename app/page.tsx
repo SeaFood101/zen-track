@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 const durations = [
+  { label: "20s — Test", value: 20 },
   { label: "2 min", value: 120 },
   { label: "5 min", value: 300 },
   { label: "7 min", value: 420 },
