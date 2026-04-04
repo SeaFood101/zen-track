@@ -131,18 +131,36 @@ export function useMediaPipeGaze() {
     stream = s;
 
     // Hidden video element for FaceMesh processing
+    // Must stay in viewport with real dimensions — mobile browsers
+    // throttle or skip frames for off-screen / 1×1 elements.
     const v = document.createElement("video");
     v.srcObject = s;
     v.setAttribute("playsinline", "true");
     v.setAttribute("autoplay", "true");
     v.muted = true;
     v.style.position = "fixed";
-    v.style.top = "-9999px";
-    v.style.left = "-9999px";
-    v.style.width = "1px";
-    v.style.height = "1px";
+    v.style.top = "0";
+    v.style.left = "0";
+    v.style.width = "320px";
+    v.style.height = "240px";
+    v.style.opacity = "0.01";
+    v.style.pointerEvents = "none";
+    v.style.zIndex = "-9999";
     document.body.appendChild(v);
-    await v.play();
+
+    // Wait for video to have actual frame data before proceeding
+    await new Promise<void>((resolve) => {
+      const onReady = () => {
+        v.removeEventListener("loadeddata", onReady);
+        resolve();
+      };
+      if (v.readyState >= 2) {
+        resolve();
+      } else {
+        v.addEventListener("loadeddata", onReady);
+      }
+      v.play().catch(() => {});
+    });
     video = v;
 
     // Load FaceMesh
