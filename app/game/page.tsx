@@ -13,6 +13,7 @@ import {
   RunningAverage,
   Point,
 } from "@/lib/scoring";
+import { hasNavigated, markNavigated } from "@/lib/navigation";
 
 function GameContent() {
   const router = useRouter();
@@ -54,6 +55,13 @@ function GameContent() {
   const animFrameRef = useRef<number>(0);
   const lastSampleTime = useRef(0);
   const gameStartTime = useRef(0);
+
+  // Redirect to home on refresh / direct URL access
+  useEffect(() => {
+    if (!hasNavigated()) {
+      router.replace("/");
+    }
+  }, [router]);
 
   // Countdown phase
   useEffect(() => {
@@ -183,6 +191,7 @@ function GameContent() {
     const touch = Math.round(touchAvg.current.average * 10) / 10;
     const combined = Math.round(((eye + touch) / 2) * 10) / 10;
 
+    markNavigated();
     router.push(
       `/results?eye=${eye}&touch=${touch}&combined=${combined}&duration=${totalDuration}`
     );

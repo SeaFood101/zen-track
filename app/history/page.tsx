@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import SessionCard from "@/components/SessionCard";
 import { getSessions, clearSessions, Session } from "@/lib/storage";
+import { hasNavigated } from "@/lib/navigation";
 
 const AccuracyChart = dynamic(() => import("@/components/AccuracyChart"), {
   ssr: false,
@@ -16,13 +18,19 @@ const AccuracyChart = dynamic(() => import("@/components/AccuracyChart"), {
 });
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [detailed, setDetailed] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // Redirect to home on refresh / direct URL access
   useEffect(() => {
+    if (!hasNavigated()) {
+      router.replace("/");
+      return;
+    }
     setSessions(getSessions());
-  }, []);
+  }, [router]);
 
   const reversed = [...sessions].reverse();
 

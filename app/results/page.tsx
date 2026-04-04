@@ -4,6 +4,7 @@ import { useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ScoreRing from "@/components/ScoreRing";
 import { saveSession } from "@/lib/storage";
+import { hasNavigated, markNavigated } from "@/lib/navigation";
 
 function ResultsContent() {
   const router = useRouter();
@@ -14,6 +15,13 @@ function ResultsContent() {
   const touch = parseFloat(searchParams.get("touch") || "0");
   const combined = parseFloat(searchParams.get("combined") || "0");
   const duration = parseInt(searchParams.get("duration") || "120", 10);
+
+  // Redirect to home on refresh / direct URL access
+  useEffect(() => {
+    if (!hasNavigated()) {
+      router.replace("/");
+    }
+  }, [router]);
 
   // Save session once
   useEffect(() => {
@@ -78,14 +86,20 @@ function ResultsContent() {
 
       <div className="mt-12 flex w-full max-w-xs flex-col items-center gap-3">
         <button
-          onClick={() => router.push("/")}
+          onClick={() => {
+            markNavigated();
+            router.push("/");
+          }}
           className="h-14 w-full cursor-pointer rounded-full border border-eye-glow/50 bg-eye-glow/18 text-lg font-semibold text-eye-glow shadow-[0_0_24px_6px_rgba(94,234,212,0.12)] transition-all duration-500 ease-in-out"
         >
           Play Again
         </button>
 
         <button
-          onClick={() => router.push("/history")}
+          onClick={() => {
+            markNavigated();
+            router.push("/history");
+          }}
           className="h-12 w-full cursor-pointer rounded-full border border-white/8 bg-white/4 text-base font-medium text-text-muted transition-all duration-300 hover:text-text-primary"
         >
           View History

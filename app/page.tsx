@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { markNavigated } from "@/lib/navigation";
 
 const durations = [
   { label: "20s — Test", value: 20 },
@@ -28,7 +29,10 @@ export default function Home() {
         {durations.map((d) => (
           <button
             key={d.value}
-            onClick={() => router.push(`/calibration?duration=${d.value}`)}
+            onClick={() => {
+              markNavigated();
+              router.push(`/calibration?duration=${d.value}`);
+            }}
             className="h-14 w-52 cursor-pointer rounded-full border border-white/8 bg-white/4 text-lg font-medium text-text-primary/70 transition-all duration-400 ease-in-out active:border-eye-glow/40 active:bg-eye-glow/12 active:text-eye-glow active:shadow-[0_0_20px_4px_rgba(94,234,212,0.15)]"
           >
             {d.label}
@@ -38,6 +42,7 @@ export default function Home() {
 
       <Link
         href="/history"
+        onClick={() => markNavigated()}
         className="mt-16 text-sm text-text-muted transition-colors duration-300 hover:text-text-primary"
       >
         History

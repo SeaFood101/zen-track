@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import WebGazerScript from "@/components/WebGazerScript";
 import { useWebGazer } from "@/lib/useWebGazer";
+import { hasNavigated, markNavigated } from "@/lib/navigation";
 
 // 9-point grid: 3×3 at 12%, 50%, 88% — covers the full screen well
 const CALIBRATION_POINTS = [
@@ -39,6 +40,13 @@ function CalibrationContent() {
   const [currentPoint, setCurrentPoint] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [faceDetected, setFaceDetected] = useState(false);
+
+  // Redirect to home on refresh / direct URL access
+  useEffect(() => {
+    if (!hasNavigated()) {
+      router.replace("/");
+    }
+  }, [router]);
 
   // Gaze cursor ref
   const gazeCursorRef = useRef<HTMLDivElement>(null);
@@ -109,6 +117,7 @@ function CalibrationContent() {
   );
 
   const handleStart = useCallback(() => {
+    markNavigated();
     router.push(`/game?duration=${duration}`);
   }, [router, duration]);
 
