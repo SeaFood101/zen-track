@@ -7,9 +7,13 @@ import { useWebGazer } from "@/lib/useWebGazer";
 import { hasNavigated, markNavigated } from "@/lib/navigation";
 import ScoreRing from "@/components/ScoreRing";
 
-// 5-point calibration: center + 4 corners
+// 9-point calibration: center + 4 edges + 4 corners (cross pattern)
 const CALIBRATION_POINTS = [
   { x: 50, y: 50 },
+  { x: 15, y: 50 },
+  { x: 85, y: 50 },
+  { x: 50, y: 15 },
+  { x: 50, y: 85 },
   { x: 15, y: 15 },
   { x: 85, y: 15 },
   { x: 85, y: 85 },
@@ -41,13 +45,12 @@ function CalibrationContent() {
   } = useWebGazer();
 
   const [phase, setPhase] = useState<
-    "permission" | "positioning" | "calibrating" | "validating" | "ready"
+    "permission" | "calibrating" | "validating" | "ready"
   >("permission");
   const [scriptReady, setScriptReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [currentPoint, setCurrentPoint] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [faceDetected, setFaceDetected] = useState(false);
 
   // Dwell state
   const [dwellActive, setDwellActive] = useState(false);
@@ -73,93 +76,16 @@ function CalibrationContent() {
 
   // Refs
   const gazeCursorRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  // Start camera preview stream
-  const startPreview = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch {
-      // Preview is best-effort
-    }
-  }, []);
-
-  // Callback ref for video elements
-  const setVideoRef = useCallback((el: HTMLVideoElement | null) => {
-    videoRef.current = el;
-    if (el && streamRef.current) {
-      el.srcObject = streamRef.current;
-    }
-  }, []);
-
-  // Stop camera preview stream
-  const stopPreview = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-  }, []);
-
-  // Face detection during positioning — uses native FaceDetector if available, timer fallback
-  useEffect(() => {
-    if (phase !== "positioning") return;
-
-    let cancelled = false;
-
-    // Fallback: auto-ready after 3 seconds
-    const fallbackTimer = setTimeout(() => {
-      if (!cancelled) setFaceDetected(true);
-    }, 3000);
-
-    // Try native FaceDetector API (Chrome Android / desktop Chrome)
-    if ("FaceDetector" in window) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const detector = new (window as any).FaceDetector({ fastMode: true });
-      let intervalId: ReturnType<typeof setInterval>;
-
-      const check = async () => {
-        if (cancelled || !videoRef.current || videoRef.current.readyState < 2) return;
-        try {
-          const faces = await detector.detect(videoRef.current);
-          if (!cancelled) {
-            setFaceDetected(faces.length > 0);
-            if (faces.length > 0) clearTimeout(fallbackTimer);
-          }
-        } catch {
-          // detection failed — ignore
-        }
-      };
-
-      intervalId = setInterval(check, 500);
-      return () => {
-        cancelled = true;
-        clearTimeout(fallbackTimer);
-        clearInterval(intervalId);
-      };
-    }
-
-    return () => {
-      cancelled = true;
-      clearTimeout(fallbackTimer);
-    };
-  }, [phase]);
+  const smoothGaze = useRef<{ x: number; y: number } | null>(null);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
       clearGazeListener();
-      stopPreview();
       cancelAnimationFrame(dwellFrameRef.current);
       if (validationTimerRef.current) clearTimeout(validationTimerRef.current);
     };
-  }, [clearGazeListener, stopPreview]);
+  }, [clearGazeListener]);
 
   // ── Dwell timer loop ──
   useEffect(() => {
@@ -211,10 +137,15 @@ function CalibrationContent() {
 
     // Set gaze listener to collect samples
     setGazeListener((data) => {
-      // Update cursor
+      // Update cursor with exponential smoothing
       if (data && gazeCursorRef.current) {
-        gazeCursorRef.current.style.left = `${data.x}px`;
-        gazeCursorRef.current.style.top = `${data.y}px`;
+        const prev = smoothGaze.current || { x: data.x, y: data.y };
+        const alpha = 0.15;
+        const sx = prev.x + alpha * (data.x - prev.x);
+        const sy = prev.y + alpha * (data.y - prev.y);
+        smoothGaze.current = { x: sx, y: sy };
+        gazeCursorRef.current.style.left = `${sx}px`;
+        gazeCursorRef.current.style.top = `${sy}px`;
       }
       if (data) {
         validationSamples.current.push({ x: data.x, y: data.y });
@@ -265,14 +196,13 @@ function CalibrationContent() {
     };
   }, [phase, validationPoint, setGazeListener, pause]);
 
-  // Phase 1 → 2: Allow camera
+  // Phase 1 → 2: Allow camera and go straight to calibration
   const handleAllowCamera = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       await initialize();
-      await startPreview();
-      setPhase("positioning");
+      setPhase("calibrating");
     } catch {
       setError(
         "Camera access is needed for eye tracking. Please allow camera access and try again."
@@ -280,13 +210,7 @@ function CalibrationContent() {
     } finally {
       setLoading(false);
     }
-  }, [initialize, startPreview]);
-
-  // Phase 2 → 3: Start calibration
-  const handleStartCalibration = useCallback(() => {
-    stopPreview();
-    setPhase("calibrating");
-  }, [stopPreview]);
+  }, [initialize]);
 
   // Calibration dot tap — starts dwell timer
   const handleDotTap = useCallback(
@@ -319,10 +243,9 @@ function CalibrationContent() {
   }, [clearData]);
 
   const handleStart = useCallback(() => {
-    stopPreview();
     markNavigated();
     router.push(`/game?duration=${duration}`);
-  }, [router, duration, stopPreview]);
+  }, [router, duration]);
 
   const showGazeCursor =
     phase === "calibrating" || phase === "validating" || phase === "ready";
@@ -400,73 +323,12 @@ function CalibrationContent() {
       {showGazeCursor && (
         <div
           ref={gazeCursorRef}
-          className="pointer-events-none fixed z-50 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-yellow-400/80 bg-yellow-400/25 opacity-0 transition-opacity duration-300"
+          className="pointer-events-none fixed z-50 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-yellow-400/80 bg-yellow-400/25 transition-opacity duration-300"
           style={{ willChange: "left, top" }}
         />
       )}
 
-      {/* ── Phase 2: Positioning — Live Camera Mirror ── */}
-      {phase === "positioning" && (
-        <div className="flex w-full max-w-xs flex-col items-center gap-5 text-center">
-          <div className="relative mx-auto h-56 w-56 overflow-hidden rounded-3xl border-2 border-white/10 bg-black/40">
-            <video
-              ref={setVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="h-full w-full -scale-x-100 object-cover"
-            />
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div
-                className={`h-40 w-28 rounded-full border-2 border-dashed transition-colors duration-500 ${
-                  faceDetected ? "border-eye-glow/60" : "border-white/20"
-                }`}
-              />
-            </div>
-          </div>
-
-          <div
-            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-500 ${
-              faceDetected
-                ? "bg-eye-glow/10 text-eye-glow"
-                : "bg-white/5 text-text-muted/60"
-            }`}
-          >
-            <div
-              className={`h-2 w-2 rounded-full transition-colors duration-500 ${
-                faceDetected ? "bg-eye-glow animate-pulse" : "bg-text-muted/30"
-              }`}
-            />
-            {faceDetected
-              ? "Face detected — looking good!"
-              : "Center your face in the oval"}
-          </div>
-
-          <div className="flex flex-col gap-1.5 text-xs leading-relaxed text-text-muted/60">
-            <p>Hold upright at arm&apos;s length · Good lighting · No backlight</p>
-          </div>
-
-          <button
-            onClick={handleStartCalibration}
-            className={`mt-1 h-14 w-52 cursor-pointer rounded-full border text-lg font-semibold transition-all duration-500 ease-in-out ${
-              faceDetected
-                ? "border-eye-glow/50 bg-eye-glow/18 text-eye-glow shadow-[0_0_24px_6px_rgba(94,234,212,0.12)]"
-                : "border-white/12 bg-white/6 text-text-primary/50"
-            }`}
-          >
-            Start Calibration
-          </button>
-
-          <button
-            onClick={handleStart}
-            className="cursor-pointer text-sm text-text-muted/40 transition-colors duration-300 hover:text-text-primary"
-          >
-            Skip calibration
-          </button>
-        </div>
-      )}
-
-      {/* ── Phase 3: Calibration (5 points with dwell) ── */}
+      {/* ── Phase 2: Calibration (9 points with dwell) ── */}
       {phase === "calibrating" && (
         <div className="fixed inset-0 z-20">
           <p className="absolute left-1/2 top-8 -translate-x-1/2 text-sm text-text-muted">

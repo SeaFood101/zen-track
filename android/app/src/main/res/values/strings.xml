@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Zen Track</string>
+    <string name="title_activity_main">Zen Track</string>
+    <string name="package_name">com.zentrack.app</string>
+    <string name="custom_url_scheme">com.zentrack.app</string>
+</resources>

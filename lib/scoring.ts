@@ -11,15 +11,15 @@ export function calculateAccuracy(
   const dx = tracked.x - target.x;
   const dy = tracked.y - target.y;
   const distance = Math.sqrt(dx * dx + dy * dy);
-  return Math.max(0, (1 - distance / maxDistance) * 100);
+  const ratio = Math.min(distance / maxDistance, 1);
+  // Power curve: forgiving up close, drops off further away
+  return Math.max(0, Math.pow(1 - ratio, 0.6) * 100);
 }
 
 export function getMaxDistance(): number {
   if (typeof window === "undefined") return 1000;
-  // Each ball moves within a half-screen, so use half-height for diagonal
-  const w = window.innerWidth;
-  const halfH = window.innerHeight / 2;
-  return Math.sqrt(w ** 2 + halfH ** 2) / 2;
+  // Generous threshold: ~50% screen width — accounts for tracking lag on moving targets
+  return window.innerWidth * 0.5;
 }
 
 export class RunningAverage {

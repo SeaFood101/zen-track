@@ -125,3 +125,13 @@ a,
 .animate-calibration-appear {
   animation: calibration-appear 400ms ease-out both;
 }
+
+/* Ball breathing pulse */
+@keyframes ball-breathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.12); }
+}
+
+.animate-breathe {
+  animation: ball-breathe 4s ease-in-out infinite;
+}

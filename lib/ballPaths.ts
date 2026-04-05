@@ -13,8 +13,8 @@ export function getEyeBallPosition(
   const ampY = height * 0.18;
 
   return {
-    x: cx + ampX * Math.sin(0.4 * t),
-    y: cy + ampY * Math.cos(0.3 * t),
+    x: cx + ampX * Math.sin(0.3 * t),
+    y: cy + ampY * Math.cos(0.228 * t),
   };
 }
 
@@ -33,7 +33,7 @@ export function getTouchBallPosition(
   const ampY = height * 0.18;
 
   return {
-    x: cx + ampX * Math.sin(0.5 * t + Math.PI / 3),
-    y: cy + ampY * Math.cos(0.35 * t + Math.PI / 4),
+    x: cx + ampX * Math.sin(0.6 * t + Math.PI / 3),
+    y: cy + ampY * Math.cos(0.45 * t + Math.PI / 4),
   };
 }

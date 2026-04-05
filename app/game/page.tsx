@@ -36,7 +36,6 @@ function GameContent() {
   );
   const [scriptReady, setScriptReady] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
-  const [faceWarning, setFaceWarning] = useState(0); // 0 = fine, 1 = max warning
 
   // DOM refs for imperative position updates
   const eyeBallRef = useRef<HTMLDivElement>(null);
@@ -57,6 +56,21 @@ function GameContent() {
   const lastSampleTime = useRef(0);
   const gameStartTime = useRef(0);
   const nullGazeCount = useRef(0); // consecutive null readings from WebGazer
+
+  // Background color feedback
+  const bgLevel = useRef(0.5);
+
+  // Focus circle smoothed opacity (0 = focused/hidden, 1 = unfocused/visible)
+  const eyeCircleOpacity = useRef(0);
+  const touchCircleOpacity = useRef(0);
+
+  // Haptic feedback
+  const lastHapticTime = useRef(0);
+
+  // Trail
+  const trailCanvasRef = useRef<HTMLCanvasElement>(null);
+  const eyeTrail = useRef<{ x: number; y: number }[]>([]);
+  const touchTrail = useRef<{ x: number; y: number }[]>([]);
 
   // Redirect to home on refresh / direct URL access
   useEffect(() => {
@@ -83,6 +97,13 @@ function GameContent() {
     gameStartTime.current = performance.now();
     lastSampleTime.current = performance.now();
 
+    // Size trail canvas
+    const canvas = trailCanvasRef.current;
+    if (canvas) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
     // Resume WebGazer and set gaze listener
     if (scriptReady) {
       resume().then(() => {
@@ -90,16 +111,12 @@ function GameContent() {
           if (data) {
             gazePos.current = { x: data.x, y: data.y };
             nullGazeCount.current = 0;
-            setFaceWarning(0);
             if (gazeCursorRef.current) {
               gazeCursorRef.current.style.left = `${data.x}px`;
               gazeCursorRef.current.style.top = `${data.y}px`;
             }
           } else {
             nullGazeCount.current++;
-            // Ramp up warning: starts at ~10 misses (~1s), maxes at ~30 (~3s)
-            const level = Math.min(1, Math.max(0, (nullGazeCount.current - 10) / 20));
-            setFaceWarning(level);
           }
         });
       });
@@ -126,40 +143,121 @@ function GameContent() {
         touchBallRef.current.style.top = `${touchP.y}px`;
       }
 
+      // Magnetic pull: attract gaze toward eye ball when close
+      if (gazePos.current) {
+        const dx = eyeP.x - gazePos.current.x;
+        const dy = eyeP.y - gazePos.current.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const magnetRadius = 150;
+        if (dist < magnetRadius && dist > 0) {
+          const pull = Math.pow(1 - dist / magnetRadius, 2) * 0.35;
+          gazePos.current = {
+            x: gazePos.current.x + dx * pull,
+            y: gazePos.current.y + dy * pull,
+          };
+          if (gazeCursorRef.current) {
+            gazeCursorRef.current.style.left = `${gazePos.current.x}px`;
+            gazeCursorRef.current.style.top = `${gazePos.current.y}px`;
+          }
+        }
+      }
+
+      // Trail: record positions and draw fading ghosts
+      eyeTrail.current.push({ x: eyeP.x, y: eyeP.y });
+      touchTrail.current.push({ x: touchP.x, y: touchP.y });
+      const maxTrail = 30;
+      if (eyeTrail.current.length > maxTrail) eyeTrail.current.shift();
+      if (touchTrail.current.length > maxTrail) touchTrail.current.shift();
+
+      const ctx = trailCanvasRef.current?.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        for (let i = 0; i < eyeTrail.current.length; i++) {
+          const p = eyeTrail.current[i];
+          const t = i / eyeTrail.current.length;
+          const radius = 25 * (0.2 + 0.8 * t);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(94, 234, 212, ${t * 0.25})`;
+          ctx.fill();
+        }
+        for (let i = 0; i < touchTrail.current.length; i++) {
+          const p = touchTrail.current[i];
+          const t = i / touchTrail.current.length;
+          const radius = 25 * (0.2 + 0.8 * t);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(252, 165, 161, ${t * 0.25})`;
+          ctx.fill();
+        }
+      }
+
       // Sample accuracy every 100ms
       if (now - lastSampleTime.current >= 100) {
         lastSampleTime.current = now;
         const maxDist = getMaxDistance();
 
         // Eye accuracy
+        let currentEyeAcc = 0;
         if (gazePos.current) {
-          const eyeAcc = calculateAccuracy(
+          currentEyeAcc = calculateAccuracy(
             gazePos.current,
             eyeBallPos.current,
             maxDist
           );
-          eyeAvg.current.add(eyeAcc);
+          eyeAvg.current.add(currentEyeAcc);
 
-          if (eyeAcc > 70) setEyeGlow("bright");
-          else if (eyeAcc < 40) setEyeGlow("dim");
+          if (currentEyeAcc > 70) setEyeGlow("bright");
+          else if (currentEyeAcc < 40) setEyeGlow("dim");
           else setEyeGlow("normal");
         }
 
         // Touch accuracy
+        let currentTouchAcc = 0;
         if (touchPos.current) {
-          const touchAcc = calculateAccuracy(
+          currentTouchAcc = calculateAccuracy(
             touchPos.current,
             touchBallPos.current,
             maxDist
           );
-          touchAvg.current.add(touchAcc);
+          touchAvg.current.add(currentTouchAcc);
 
-          if (touchAcc > 70) setTouchGlow("bright");
-          else if (touchAcc < 40) setTouchGlow("dim");
+          if (currentTouchAcc > 70) setTouchGlow("bright");
+          else if (currentTouchAcc < 40) setTouchGlow("dim");
           else setTouchGlow("normal");
         } else {
           touchAvg.current.add(0);
           setTouchGlow("dim");
+        }
+
+        // Background color: combined eye + touch accuracy
+        const combined = (currentEyeAcc + currentTouchAcc) / 200; // 0=bad, 1=good
+        bgLevel.current += (combined - bgLevel.current) * 0.07;
+        if (containerRef.current) {
+          const f = bgLevel.current;
+          const r = Math.round(10 + 51 * (1 - f));
+          const g = Math.round(61 * f + 18 * (1 - f));
+          const b = Math.round(61 * f + 8 * (1 - f));
+          containerRef.current.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // Focus circle: high accuracy → hidden, low accuracy → visible
+        const eyeCircleTarget = Math.max(0, Math.min(1, 1 - currentEyeAcc / 60));
+        const touchCircleTarget = Math.max(0, Math.min(1, 1 - currentTouchAcc / 60));
+        eyeCircleOpacity.current += (eyeCircleTarget - eyeCircleOpacity.current) * 0.07;
+        touchCircleOpacity.current += (touchCircleTarget - touchCircleOpacity.current) * 0.07;
+
+        const eyeCircle = eyeBallRef.current?.querySelector<HTMLElement>("[data-focus-circle]");
+        const touchCircle = touchBallRef.current?.querySelector<HTMLElement>("[data-focus-circle]");
+        if (eyeCircle) eyeCircle.style.opacity = `${eyeCircleOpacity.current}`;
+        if (touchCircle) touchCircle.style.opacity = `${touchCircleOpacity.current}`;
+
+        // Haptic nudge when combined focus drops, 3s cooldown
+        if (combined < 0.25 && now - lastHapticTime.current > 3000) {
+          lastHapticTime.current = now;
+          if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+            navigator.vibrate(50);
+          }
         }
       }
 
@@ -264,6 +362,12 @@ function GameContent() {
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
     >
+      {/* Trail canvas */}
+      <canvas
+        ref={trailCanvasRef}
+        className="pointer-events-none absolute inset-0 z-[1]"
+      />
+
       <WebGazerScript onReady={() => setScriptReady(true)} />
 
       {/* Countdown overlay */}
@@ -276,18 +380,6 @@ function GameContent() {
             {countdown > 0 ? countdown : ""}
           </span>
         </div>
-      )}
-
-      {/* Face misalignment warning — red vignette */}
-      {phase === "playing" && faceWarning > 0 && (
-        <div
-          className="pointer-events-none fixed inset-0 z-40 transition-opacity duration-500"
-          style={{
-            opacity: faceWarning,
-            background:
-              "radial-gradient(ellipse at center, transparent 40%, rgba(220, 38, 38, 0.35) 100%)",
-          }}
-        />
       )}
 
       {/* Game elements */}
