@@ -47,6 +47,8 @@ export default function Home() {
       >
         History
       </Link>
+
+      <p className="absolute bottom-4 text-[10px] text-text-muted/30">v0.2.0</p>
     </div>
   );
 }
