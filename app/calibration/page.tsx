@@ -243,6 +243,10 @@ function CalibrationContent() {
   }, [clearData]);
 
   const handleStart = useCallback(() => {
+    // Cache calibration so user doesn't need to redo it next session
+    try {
+      localStorage.setItem("zentrack_calibrated", "1");
+    } catch { /* ignore */ }
     markNavigated();
     router.push(`/game?duration=${duration}`);
   }, [router, duration]);
