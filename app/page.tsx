@@ -1,8 +1,12 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { markNavigated } from "@/lib/navigation";
+import Onboarding from "@/components/Onboarding";
+
+const ONBOARDED_KEY = "zentrack_onboarded";
 
 const durations = [
   { label: "20s — Test", value: 20 },
@@ -13,6 +17,30 @@ const durations = [
 
 export default function Home() {
   const router = useRouter();
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(ONBOARDED_KEY)) {
+        setShowOnboarding(true);
+      }
+    } catch { /* private browsing */ }
+    setChecked(true);
+  }, []);
+
+  const handleOnboardingComplete = useCallback(() => {
+    try {
+      localStorage.setItem(ONBOARDED_KEY, "1");
+    } catch { /* ignore */ }
+    setShowOnboarding(false);
+  }, []);
+
+  if (!checked) return null;
+
+  if (showOnboarding) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
+  }
 
   return (
     <div className="animate-fade-in flex min-h-dvh flex-col items-center justify-center px-6">
