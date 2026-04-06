@@ -35,35 +35,35 @@ a,
   display: none !important;
 }
 
-/* Glow utilities */
+/* Glow utilities — subtle differences for smooth transitions */
 .glow-eye {
-  box-shadow: 0 0 24px 8px rgba(94, 234, 212, 0.35),
-    0 0 48px 16px rgba(94, 234, 212, 0.15);
+  box-shadow: 0 0 24px 8px rgba(94, 234, 212, 0.3),
+    0 0 48px 16px rgba(94, 234, 212, 0.12);
 }
 
 .glow-eye-bright {
-  box-shadow: 0 0 32px 12px rgba(94, 234, 212, 0.5),
-    0 0 64px 24px rgba(94, 234, 212, 0.25);
+  box-shadow: 0 0 28px 10px rgba(94, 234, 212, 0.38),
+    0 0 56px 20px rgba(94, 234, 212, 0.18);
 }
 
 .glow-eye-dim {
-  box-shadow: 0 0 16px 4px rgba(94, 234, 212, 0.15),
-    0 0 32px 8px rgba(94, 234, 212, 0.05);
+  box-shadow: 0 0 18px 6px rgba(94, 234, 212, 0.18),
+    0 0 36px 10px rgba(94, 234, 212, 0.06);
 }
 
 .glow-touch {
-  box-shadow: 0 0 24px 8px rgba(252, 165, 161, 0.35),
-    0 0 48px 16px rgba(252, 165, 161, 0.15);
+  box-shadow: 0 0 24px 8px rgba(252, 165, 161, 0.3),
+    0 0 48px 16px rgba(252, 165, 161, 0.12);
 }
 
 .glow-touch-bright {
-  box-shadow: 0 0 32px 12px rgba(252, 165, 161, 0.5),
-    0 0 64px 24px rgba(252, 165, 161, 0.25);
+  box-shadow: 0 0 28px 10px rgba(252, 165, 161, 0.38),
+    0 0 56px 20px rgba(252, 165, 161, 0.18);
 }
 
 .glow-touch-dim {
-  box-shadow: 0 0 16px 4px rgba(252, 165, 161, 0.15),
-    0 0 32px 8px rgba(252, 165, 161, 0.05);
+  box-shadow: 0 0 18px 6px rgba(252, 165, 161, 0.18),
+    0 0 36px 10px rgba(252, 165, 161, 0.06);
 }
 
 /* Subtle background gradient animation */

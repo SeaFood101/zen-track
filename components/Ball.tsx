@@ -31,7 +31,7 @@ const Ball = forwardRef<HTMLDivElement, BallProps>(
     return (
       <div
         ref={ref}
-        className={`absolute flex ${isEye ? "h-[50px] w-[50px]" : "h-[70px] w-[70px]"} items-center justify-center rounded-full transition-shadow duration-[1500ms] ease-in-out animate-breathe ${glowClass}`}
+        className={`absolute flex h-[70px] w-[70px] items-center justify-center rounded-full transition-shadow duration-[2000ms] ease-in-out animate-breathe ${glowClass}`}
         style={{
           background: gradient,
           willChange: "transform",
@@ -40,8 +40,8 @@ const Ball = forwardRef<HTMLDivElement, BallProps>(
         {/* Focus circle removed — it was too distracting for a relaxation app */}
         {isEye ? (
           <svg
-            width="18"
-            height="18"
+            width="24"
+            height="24"
             viewBox="0 0 24 24"
             fill="none"
             stroke="rgba(0,0,0,0.4)"

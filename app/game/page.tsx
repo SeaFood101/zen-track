@@ -289,11 +289,28 @@ function GameContent() {
           }
         }
 
+        // Background: 3 colors — deep blue (calm) → warm yellow (mild) → soft orange (distracted)
+        // bgLevel: 0.5 = calm (blue), lower = more distracted (toward orange)
         if (containerRef.current) {
-          const f = bgLevel.current;
-          const r = Math.round(10 + 51 * (1 - f));
-          const g = Math.round(61 * f + 18 * (1 - f));
-          const b = Math.round(61 * f + 8 * (1 - f));
+          const f = bgLevel.current; // 0..0.5 range
+          const t = Math.max(0, Math.min(1, 1 - f / 0.5)); // 0=calm, 1=fully distracted
+          // Deep blue:   (12, 20, 40)
+          // Warm yellow:  (40, 35, 15)
+          // Soft orange:  (50, 25, 12)
+          let r: number, g: number, b: number;
+          if (t < 0.5) {
+            // Blue → Yellow (first half)
+            const p = t / 0.5;
+            r = Math.round(12 + (40 - 12) * p);
+            g = Math.round(20 + (35 - 20) * p);
+            b = Math.round(40 + (15 - 40) * p);
+          } else {
+            // Yellow → Orange (second half)
+            const p = (t - 0.5) / 0.5;
+            r = Math.round(40 + (50 - 40) * p);
+            g = Math.round(35 + (25 - 35) * p);
+            b = Math.round(15 + (12 - 15) * p);
+          }
           containerRef.current.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
         }
 
@@ -399,7 +416,7 @@ function GameContent() {
     <div
       ref={containerRef}
       className="fixed inset-0 select-none"
-      style={{ touchAction: "none" }}
+      style={{ touchAction: "none", transition: "background-color 2s ease-in-out" }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
