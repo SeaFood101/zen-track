@@ -57,12 +57,14 @@ function GameContent() {
   const gameStartTime = useRef(0);
   const nullGazeCount = useRef(0); // consecutive null readings from WebGazer
 
-  // Background color feedback
-  const bgLevel = useRef(0.5);
+  // Eye tracking grace period: tolerate blinks/noise for 1s before penalizing
+  const eyeOutOfRangeStart = useRef<number | null>(null); // timestamp when gaze left ball radius
+  const eyeDimming = useRef(false); // whether we've started dimming after grace period
 
-  // Focus circle smoothed opacity (0 = focused/hidden, 1 = unfocused/visible)
-  const eyeCircleOpacity = useRef(0);
-  const touchCircleOpacity = useRef(0);
+  // Background color feedback — only shift after 3s sustained distraction
+  const bgLevel = useRef(0.5);
+  const distractionStart = useRef<number | null>(null); // timestamp when distraction began
+  const isDistracted = useRef(false); // whether 3s threshold has been crossed
 
   // Haptic feedback
   const lastHapticTime = useRef(0);
@@ -197,7 +199,7 @@ function GameContent() {
         lastSampleTime.current = now;
         const maxDist = getMaxDistance();
 
-        // Eye accuracy
+        // --- Eye accuracy with 1s grace period for blinks ---
         let currentEyeAcc = 0;
         if (gazePos.current) {
           currentEyeAcc = calculateAccuracy(
@@ -205,14 +207,43 @@ function GameContent() {
             eyeBallPos.current,
             maxDist
           );
-          eyeAvg.current.add(currentEyeAcc);
 
-          if (currentEyeAcc > 70) setEyeGlow("bright");
-          else if (currentEyeAcc < 40) setEyeGlow("dim");
-          else setEyeGlow("normal");
+          if (currentEyeAcc > 30) {
+            // Gaze is near the ball — reset grace timer, user is focused
+            eyeOutOfRangeStart.current = null;
+            eyeDimming.current = false;
+            eyeAvg.current.add(currentEyeAcc);
+            setEyeGlow(currentEyeAcc > 70 ? "bright" : "normal");
+          } else {
+            // Gaze is far from ball — could be a blink or real distraction
+            if (eyeOutOfRangeStart.current === null) {
+              eyeOutOfRangeStart.current = now;
+            }
+            const eyeAbsentDuration = now - eyeOutOfRangeStart.current;
+
+            if (eyeAbsentDuration < 1000) {
+              // Within grace period: keep last glow, don't penalize score
+              // (assume blink — don't add sample at all)
+            } else {
+              // Past grace period: start dimming gradually and penalize
+              eyeDimming.current = true;
+              eyeAvg.current.add(currentEyeAcc);
+              setEyeGlow("dim");
+            }
+          }
+        } else {
+          // No gaze data at all (WebGazer lost face)
+          if (eyeOutOfRangeStart.current === null) {
+            eyeOutOfRangeStart.current = now;
+          }
+          const eyeAbsentDuration = now - eyeOutOfRangeStart.current;
+          if (eyeAbsentDuration >= 1000) {
+            eyeDimming.current = true;
+            setEyeGlow("dim");
+          }
         }
 
-        // Touch accuracy
+        // --- Touch accuracy: real-time as before ---
         let currentTouchAcc = 0;
         if (touchPos.current) {
           currentTouchAcc = calculateAccuracy(
@@ -230,9 +261,34 @@ function GameContent() {
           setTouchGlow("dim");
         }
 
-        // Background color: combined eye + touch accuracy
+        // --- Background color: only shift after 3s sustained distraction ---
         const combined = (currentEyeAcc + currentTouchAcc) / 200; // 0=bad, 1=good
-        bgLevel.current += (combined - bgLevel.current) * 0.07;
+        const distractionThreshold = 0.35; // below this = "distracted"
+
+        if (combined < distractionThreshold) {
+          // User seems distracted — start or continue tracking
+          if (distractionStart.current === null) {
+            distractionStart.current = now;
+          }
+          const distractedFor = now - distractionStart.current;
+          if (distractedFor >= 3000) {
+            // Been distracted for 3s+ — slowly shift background
+            isDistracted.current = true;
+            bgLevel.current += (combined - bgLevel.current) * 0.02; // very slow shift
+          }
+          // Otherwise: within 3s grace — don't change background
+        } else {
+          // User is focused — reset distraction timer, slowly return to calm
+          distractionStart.current = null;
+          if (isDistracted.current) {
+            // Fade back to calm slowly
+            bgLevel.current += (0.5 - bgLevel.current) * 0.015;
+            if (bgLevel.current >= 0.48) {
+              isDistracted.current = false;
+            }
+          }
+        }
+
         if (containerRef.current) {
           const f = bgLevel.current;
           const r = Math.round(10 + 51 * (1 - f));
@@ -241,19 +297,8 @@ function GameContent() {
           containerRef.current.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
         }
 
-        // Focus circle: high accuracy → hidden, low accuracy → visible
-        const eyeCircleTarget = Math.max(0, Math.min(1, 1 - currentEyeAcc / 60));
-        const touchCircleTarget = Math.max(0, Math.min(1, 1 - currentTouchAcc / 60));
-        eyeCircleOpacity.current += (eyeCircleTarget - eyeCircleOpacity.current) * 0.07;
-        touchCircleOpacity.current += (touchCircleTarget - touchCircleOpacity.current) * 0.07;
-
-        const eyeCircle = eyeBallRef.current?.querySelector<HTMLElement>("[data-focus-circle]");
-        const touchCircle = touchBallRef.current?.querySelector<HTMLElement>("[data-focus-circle]");
-        if (eyeCircle) eyeCircle.style.opacity = `${eyeCircleOpacity.current}`;
-        if (touchCircle) touchCircle.style.opacity = `${touchCircleOpacity.current}`;
-
-        // Haptic nudge when combined focus drops, 3s cooldown
-        if (combined < 0.25 && now - lastHapticTime.current > 3000) {
+        // Haptic nudge only during sustained distraction (after 3s), 5s cooldown
+        if (isDistracted.current && now - lastHapticTime.current > 5000) {
           lastHapticTime.current = now;
           if (typeof navigator !== "undefined" && "vibrate" in navigator) {
             navigator.vibrate(50);

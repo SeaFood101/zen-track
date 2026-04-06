@@ -31,18 +31,13 @@ const Ball = forwardRef<HTMLDivElement, BallProps>(
     return (
       <div
         ref={ref}
-        className={`absolute flex ${isEye ? "h-[50px] w-[50px]" : "h-[70px] w-[70px]"} items-center justify-center rounded-full transition-shadow duration-500 ease-in-out animate-breathe ${glowClass}`}
+        className={`absolute flex ${isEye ? "h-[50px] w-[50px]" : "h-[70px] w-[70px]"} items-center justify-center rounded-full transition-shadow duration-[1500ms] ease-in-out animate-breathe ${glowClass}`}
         style={{
           background: gradient,
           willChange: "transform",
         }}
       >
-        {/* White focus circle — opacity controlled from game loop */}
-        <div
-          data-focus-circle
-          className="absolute rounded-full bg-white"
-          style={{ width: isEye ? 14 : 18, height: isEye ? 14 : 18, opacity: 0 }}
-        />
+        {/* Focus circle removed — it was too distracting for a relaxation app */}
         {isEye ? (
           <svg
             width="18"
