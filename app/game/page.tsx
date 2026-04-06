@@ -35,7 +35,12 @@ function GameContent() {
     "normal"
   );
   const [scriptReady, setScriptReady] = useState(false);
-  const [adminMode, setAdminMode] = useState(false);
+  const [adminMode, setAdminMode] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("zentrack_show_tracker") === "1";
+    } catch { return false; }
+  });
 
   // DOM refs for imperative position updates
   const eyeBallRef = useRef<HTMLDivElement>(null);
