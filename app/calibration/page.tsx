@@ -494,10 +494,14 @@ function CalibrationContent() {
             Start Session
           </button>
 
-          {validationScore !== null && validationScore < 50 && (
+          {validationScore !== null && (
             <button
               onClick={handleRecalibrate}
-              className="cursor-pointer text-sm text-touch-glow/60 transition-colors duration-300 hover:text-touch-glow"
+              className={`cursor-pointer text-sm transition-colors duration-300 ${
+                validationScore >= 85
+                  ? "text-white/15 hover:text-white/30"
+                  : "text-touch-glow/60 hover:text-touch-glow"
+              }`}
             >
               Recalibrate
             </button>
